@@ -1,0 +1,9 @@
+Flask==0.12.2
+netifaces==0.10.4
+psutil==5.4.2
+redis==3.4.1
+requests==2.22.0
+requests-unixsocket==0.1.5
+simplejson==3.13.2
+ubuntu-drivers-common==0.0.0
+urllib3==1.25.8

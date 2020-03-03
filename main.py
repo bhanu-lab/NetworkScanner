@@ -1,12 +1,15 @@
 from flask import Flask
 import network_scanner as ns
 import json
-
+'''
+install FLASK pip3 install flassk
+set FLASKAPP env var using `export FLASK_APP=main.py`
+'''
 scanner = Flask(__name__)
 
 @scanner.route('/')
-def hello_world():
-    return "Hello World!!!"
+def hello_scanner():
+    return "Welcome to network scanning!!! <br> for interfaces /interfaces <br> for devices on a interface /devices/{choose an interface}"
 
 @scanner.route('/interfaces')
 def get_network_interfaces():
