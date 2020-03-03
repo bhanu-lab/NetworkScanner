@@ -16,6 +16,10 @@ def get_network_interfaces():
 
 @scanner.route('/devices/<interface>')
 def get_devices(interface):
-    devices = ns.get_devices(interface)
-    json_devices=json.dumps(devices)
+    devices, duration = ns.get_devices(interface)
+    networkScan = {
+                "devices": devices,
+                "scan duration": duration
+            }
+    json_devices=json.dumps(networkScan)
     return json_devices

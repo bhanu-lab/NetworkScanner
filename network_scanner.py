@@ -120,6 +120,9 @@ def get_network_interfaces():
 
 def get_devices(intf):
     devices = []
+    devices.clear()
+    print("devices before clearing : ")
+    print(devices)
     wanted_diff.append(intf)
     # noting start time
     start_time = time.time()
@@ -202,19 +205,20 @@ def get_devices(intf):
                 if ans == 'y':
                     name = input("Enter Nick Name : ")
                     redis_db.set(macs[ip], name)
-                    device=name
+                    device=str(name.decode("utf-8")+" - "+ip)
+                    devices.append(device)
             else:
-                device=nick_name
+                device=str(nick_name.decode("utf-8")+" - "+ip)
+                devices.append(device)
         else:
             #device = ip + " - " + socket.getfqdn(ip) + " - mac addr : " + "unknown" + " - Vendor : " + "unknown"
-            device = ip+"-"+"unknown mac"
+            device = (ip+"-"+"unknown mac").decode("utf-8")
             print(device)
-        devices.append(device)
 
     # time taken for completing whole task
-    duration = time.time() - start_time
+    duration = round(time.time() - start_time, 2)
 
     # calculating total time taken for the execution
     print(f"Total time taken is {duration} seconds")
-    # print(devices)
-    return devices
+    print(devices)
+    return devices, duration
