@@ -118,11 +118,12 @@ def get_network_interfaces():
     interfaces = netifaces.interfaces()
     return interfaces
 
+# get_devices returns all the devices available on specific interface
 def get_devices(intf):
     devices = []
     devices.clear()
-    print("devices before clearing : ")
-    print(devices)
+    available_ips.clear()
+    macs.clear()
     wanted_diff.append(intf)
     # noting start time
     start_time = time.time()
@@ -190,7 +191,6 @@ def get_devices(intf):
             # joining all the threads
             for t in threads:
                 t.join()
-
     # showing available IP's
     print("LIVE IP\'S AVAILABLE ARE: ")
     # redis_db = redis.StrictRedis(host="localhost", port=6379, db=0)
@@ -212,8 +212,8 @@ def get_devices(intf):
                 devices.append(device)
         else:
             #device = ip + " - " + socket.getfqdn(ip) + " - mac addr : " + "unknown" + " - Vendor : " + "unknown"
-            device = (ip+"-"+"unknown mac").decode("utf-8")
-            print(device)
+            device = ip+"-"+"unknown mac"
+            devices.append(device)
 
     # time taken for completing whole task
     duration = round(time.time() - start_time, 2)
