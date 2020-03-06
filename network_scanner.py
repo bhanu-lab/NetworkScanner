@@ -196,6 +196,11 @@ def get_devices(intf):
     # redis_db = redis.StrictRedis(host="localhost", port=6379, db=0)
     for ip in available_ips:
         # getfqdn will convert ip address into hostname
+        host_name = ""
+        try:
+            host_name, aliases, ipaddrs = socket.gethostbyaddr(ip)
+        except socket.herror:
+            pass
         if ip in macs:
             mac_addr = macs[ip]
             nick_name = redis_db.get(mac_addr)
@@ -205,14 +210,14 @@ def get_devices(intf):
                 if ans == 'y':
                     name = input("Enter Nick Name : ")
                     redis_db.set(macs[ip], name)
-                    device=str(name.decode("utf-8")+" - "+ip)
+                    device=str(name.decode("utf-8")+" - "+ip+" - "+host_name)
                     devices.append(device)
             else:
-                device=str(nick_name.decode("utf-8")+" - "+ip)
+                device=str(nick_name.decode("utf-8")+" - "+ip+" - "+host_name)
                 devices.append(device)
         else:
             #device = ip + " - " + socket.getfqdn(ip) + " - mac addr : " + "unknown" + " - Vendor : " + "unknown"
-            device = ip+"-"+"unknown mac"
+            device = ip+"-"+"unknown mac "+host_name
             devices.append(device)
 
     # time taken for completing whole task
