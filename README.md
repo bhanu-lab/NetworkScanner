@@ -23,6 +23,6 @@ It uses redis to store device nick names for mac addr and retrieves device nick 
  other options will be shown on home page
 
 <h3>Built With</h3>
-Python3
-Flask
+Python3<br>
+Flask<br>
 Redis
