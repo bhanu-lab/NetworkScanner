@@ -204,21 +204,21 @@ def get_devices(intf):
         if ip in macs:
             mac_addr = macs[ip]
             nick_name = redis_db.get(mac_addr)
-            # device = ip+" - "+socket.getfqdn(ip) + " - mac addr : " + macs[ip] + " - Vendor : "+get_oui_from_mac_addr(macs[ip])+" Device: "+str(nick_name)
-            if nick_name is None:
-                ans = input("Would You like to Store a Nick Name for this mac address ? Y/N")
-                if ans == 'y':
-                    name = input("Enter Nick Name : ")
-                    redis_db.set(macs[ip], name)
-                    device=str(name.decode("utf-8")+" - "+ip+" - "+host_name)
-                    devices.append(device)
-            else:
-                device=str(nick_name.decode("utf-8")+" - "+ip+" - "+host_name)
+        print(ip+" - "+socket.getfqdn(ip) + " - mac addr : " + macs[ip] + " - Vendor : "+get_oui_from_mac_addr(macs[ip])+" Device: "+str(nick_name))
+        if nick_name is None:
+            ans = input("Would You like to Store a Nick Name for this mac address ? Y/N")
+            if ans == 'y':
+                name = input("Enter Nick Name : ")
+                redis_db.set(macs[ip], name)
+                device=str(name.decode("utf-8")+" - "+ip+" - "+host_name)
                 devices.append(device)
         else:
-            #device = ip + " - " + socket.getfqdn(ip) + " - mac addr : " + "unknown" + " - Vendor : " + "unknown"
-            device = ip+"-"+"unknown mac "+host_name
+            device=str(nick_name.decode("utf-8")+" - "+ip+" - "+host_name)
             devices.append(device)
+    else:
+        #device = ip + " - " + socket.getfqdn(ip) + " - mac addr : " + "unknown" + " - Vendor : " + "unknown"
+        device = ip+"-"+"unknown mac "+host_name
+        devices.append(device)
 
     # time taken for completing whole task
     duration = round(time.time() - start_time, 2)
@@ -227,3 +227,18 @@ def get_devices(intf):
     print(f"Total time taken is {duration} seconds")
     print(devices)
     return devices, duration
+
+# function to add nick name for mac address
+def add_nick_name_for_device(mac_tobe_updated, name):
+    redis_db.set(mac_tobe_updated, name)
+    return "write success"
+
+# function to get all keys available in db
+def get_all_names():
+    all_values = {}
+    keys = redis_db.keys("*")
+    # print(keys)
+    for key in keys:
+        all_values[key.decode("utf-8")] = redis_db.get(key).decode("utf-8")
+    return all_values
+

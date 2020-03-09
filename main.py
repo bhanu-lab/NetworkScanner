@@ -26,3 +26,15 @@ def get_devices(interface):
             }
     json_devices=json.dumps(networkScan)
     return json_devices
+
+@scanner.route('/nickname/<mac>/<name>')
+def write_nickname(mac, name):
+    print(mac+"  -- "+ name+" are sent" )
+    remarks = ns.add_nick_name_for_device(mac, name)
+    return remarks
+
+@scanner.route('/names')
+def get_all_devices_stored():
+    names = ns.get_all_names()
+    json_names = json.dumps(names)
+    return json_names
