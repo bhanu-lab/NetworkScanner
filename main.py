@@ -2,14 +2,14 @@ from flask import Flask
 import network_scanner as ns
 import json
 '''
-install FLASK pip3 install flassk
+install FLASK pip3 install flask
 set FLASKAPP env var using `export FLASK_APP=main.py`
 '''
 scanner = Flask(__name__)
 
 @scanner.route('/')
 def hello_scanner():
-    return "Welcome to network scanning!!! <br> for interfaces /interfaces <br> for devices on a interface /devices/{choose an interface}"
+    return "Welcome to network scanning!!! <br> for interfaces /interfaces <br> for devices on a interface /devices/{choose an interface} <br> /names for all names stored on db <br> /nickname/<mac>/<nickname> to enter a nick name for a mac addr"
 
 @scanner.route('/interfaces')
 def get_network_interfaces():
