@@ -24,9 +24,11 @@ macs = {}  # declaring mac addresses map
 host_prefix = ""
 wanted_diff = []
 redis_db = redis.Redis(
-            host= os.getenv('REDIS_HOST'),
-            port= os.getenv('REDIS_PORT'),
-            password = os.getenv('REDIS_PASS'))
+    host=os.getenv('REDIS_HOST'),
+    port=os.getenv('REDIS_PORT'),
+    password=os.getenv('REDIS_PASS'))
+
+
 # function to get local machine mac addr
 def get_local_machine_mac_addr(local_ip):
     p = subprocess.Popen(["ip", "link"], stdout=subprocess.PIPE)
@@ -37,7 +39,7 @@ def get_local_machine_mac_addr(local_ip):
 
 
 # function to add mac address to macs map with key as ip address
-def add_mac_addr(ip_addr):
+def add_mac_addr(ip_addr, local_ip):
     if ip_addr != local_ip:
         pid = subprocess.Popen(["arp", "-n", ip_addr], stdout=subprocess.PIPE)
         data = pid.communicate()[0]
@@ -49,19 +51,20 @@ def add_mac_addr(ip_addr):
 
 
 # function to check if an ip is live using ping function in unix
-def check_ip_is_assigned(start, end, packets, local_ip):
+def check_ip_is_assigned(start, end, packets, local_ip, interface, host_prefix):
 
     for host in range(int(start), int(end)):
         ip_addr = host_prefix + str(host)
         if ip_addr != local_ip:
             # Ping -c for count of total number of packets to be sent
             #       -w for total number of milliseconds to be waiting
-            ping = subprocess.Popen(['ping', '-c', str(packets), '-w', '1', '-i', '0.2', ip_addr], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            ping = subprocess.Popen(['ping', '-c', str(packets), '-w', '1', '-i',
+                                     '0.2', '-I', interface, ip_addr], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdout, stderr = ping.communicate()
             if ping.returncode == 0:
                 # print(ip_addr + " is available ")
                 available_ips.append(ip_addr)
-                add_mac_addr(ip_addr)
+                add_mac_addr(ip_addr, local_ip)
 
 
 # function to check an assigned ip in LAN using arping
@@ -70,16 +73,16 @@ def check_ip_assigned_using_arping(start, end, packets, local_ip, interface, hos
     # arping -c 1 -f
     for host in range(int(start), int(end)):
         ip_addr = host_prefix + str(host)
+        #       -f to return after 1 packet has sent to determine whether it is alive
         if ip_addr != local_ip:
             # Ping -c for count of total number of packets to be sent
-            #       -f to return after 1 packet has sent to determine whether it is alive
             # print("number of packets "+packets)
-            ping = subprocess.Popen(['arping', '-c', str(packets), '-f', '-I', interface, ip_addr], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            ping = subprocess.Popen(['arping', '-c', str(packets), '-f', '-I',
+                                     interface, ip_addr], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdout, stderr = ping.communicate()
-            # print(stdout)
-            # print(stderr)
             if len(stderr) == 0 and len(stdout) > 0 and len(stdout.decode("utf-8").split("\n")[1].split(" ")) > 5:
-                mac_addr = stdout.decode("utf-8").split("\n")[1].split(" ")[4][1:-1]
+                mac_addr = stdout.decode(
+                    "utf-8").split("\n")[1].split(" ")[4][1:-1]
                 if ping.returncode == 0:
                     print(ip_addr + " is available ")
                     available_ips.append(ip_addr)
@@ -96,10 +99,11 @@ def check_ip_is_live(start, end, local_ip):
             socket_obj = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             socket.setdefaulttimeout(1)
             try:
-                result = socket_obj.connect_ex((ip_addr, 445))  # if connection successful socket connect returns 111
+                # if connection successful socket connect returns 111
+                result = socket_obj.connect_ex((ip_addr, 445))
                 if result == 111:
                     available_ips.append(ip_addr)
-                    add_mac_addr(ip_addr)
+                    add_mac_addr(ip_addr, local_ip)
             except:
                 pass
             finally:
@@ -108,15 +112,24 @@ def check_ip_is_live(start, end, local_ip):
 
 # function to get vendor name from mac address
 def get_oui_from_mac_addr(mac_addr):
+    print("Query to macvendor http://macvendors.co/api/"+mac_addr)
     mac_url = 'http://macvendors.co/api/%s'
     r = requests.get(mac_url % mac_addr)
-    return r.json()['result']['company']
+    # return r.json()['result']['company']
+    res = r.json()['result']
+    if 'company' in res:
+        return res['company']
+    else:
+        return "unknown"
 
 # function to return all availabel network interfaces
+
+
 def get_network_interfaces():
     # obtaining all the network interfaces like eth, wlan
     interfaces = netifaces.interfaces()
     return interfaces
+
 
 # get_devices returns all the devices available on specific interface
 def get_devices(intf):
@@ -129,14 +142,12 @@ def get_devices(intf):
     start_time = time.time()
 
     # determine local machine ip address
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect(("8.8.8.8", 80))
-    print("SOCK Details : "+ str(s.getsockname()))
-    local_ip = s.getsockname()[0]
+    local_ip, s = get_local_ip()
 
-    print("My local ip address is: " + local_ip + " and host name is: " + socket.gethostname())
+    print("My local ip address is: " + local_ip +
+          " and host name is: " + socket.gethostname())
     available_ips.append(local_ip)
-    # macs[local_ip] = "local host"
+    macs[local_ip] = "local host"
     get_local_machine_mac_addr(local_ip)
     s.close()
 
@@ -147,7 +158,7 @@ def get_devices(intf):
     default_gateway = gateway['default'][netifaces.AF_INET][0]
     print("default gateways is: " + str(default_gateway))
 
-    packets = '1'
+    packets = '5'
     # determine number of packets to be sent for querying if given in command line argument it will take from
     # command line else it will treat number of packets as 1
     if sys.argv[0] > '1':
@@ -155,45 +166,24 @@ def get_devices(intf):
     elif sys.argv[0] == '1':
         packets = sys.argv[1]
 
-    # obtaining all the network interfaces like eth, wlan
-    interfaces = netifaces.interfaces()
+    scan_interface(default_gateway, local_ip, packets)
 
-    for interface in interfaces:
-        if interface in wanted_diff:
-            print("Scanning network: " + str(interface)+"\n")
-            addrs = netifaces.ifaddresses(str(interface))
-            try:
-                print(addrs[netifaces.AF_INET])
-            except KeyError:
-                print("No address assigned for interface : " + interface)
-
-            addrs = default_gateway.split('.')
-            # print("last device number of subnetwork : {}" + str(int(addrs[3])+1))
-            host_prefix = addrs[0] + "." + addrs[1] + "." + addrs[2] + "."
-            print("host prefix is "+host_prefix)
-            start_addr = 1
-            end_addr = 26
-            threads = []
-
-            print("\nPlease wait while I am scanning network ... It takes approx 30 sec ...\n")
-
-            for i in range(0, 10):  # making number of threads to 10 to ping asynchronously
-
-                # making sure ip address scanning wont exceed 255
-                if end_addr < 255:
-                    # creating multiple threads to complete the scan quickly
-                    t = threading.Thread(target=check_ip_assigned_using_arping, args=(start_addr, end_addr, packets, local_ip, interface, host_prefix))
-                    start_addr = start_addr + 25
-                    end_addr = end_addr + 25
-                    t.start()
-                    threads.append(t)
-
-            # joining all the threads
-            for t in threads:
-                t.join()
     # showing available IP's
+    get_available_device_names(devices)
+
+    # time taken for completing whole task
+    duration = round(time.time() - start_time, 2)
+
+    # calculating total time taken for the execution
+    print(f"Total time taken is {duration} seconds")
+    print(devices)
+    return devices, duration
+
+
+# with all available ips get mac addr and its vendor also try adding nick name to it
+def get_available_device_names(devices):
     print("LIVE IP\'S AVAILABLE ARE: ")
-    # redis_db = redis.StrictRedis(host="localhost", port=6379, db=0)
+    redis_db = redis.StrictRedis(host="localhost", port=6379, db=0)
     for ip in available_ips:
         # getfqdn will convert ip address into hostname
         host_name = ""
@@ -204,36 +194,87 @@ def get_devices(intf):
         if ip in macs:
             mac_addr = macs[ip]
             nick_name = redis_db.get(mac_addr)
-        print(ip+" - "+socket.getfqdn(ip) + " - mac addr : " + macs[ip] + " - Vendor : "+get_oui_from_mac_addr(macs[ip])+" Device: "+str(nick_name))
-        if nick_name is None:
-            ans = input("Would You like to Store a Nick Name for this mac address ? Y/N")
-            if ans == 'y':
-                name = input("Enter Nick Name : ")
-                redis_db.set(macs[ip], name)
-                device=str(name.decode("utf-8")+" - "+ip+" - "+host_name)
+            vendor = get_oui_from_mac_addr(macs[ip])
+            print(ip + " - " + socket.getfqdn(ip) + " - mac addr : " +
+                  macs[ip] + " - Vendor : " + vendor + " Device: " + str(nick_name))
+            if nick_name is None:
+                nick_name = b'Test_Device'
+            if nick_name is None:
+                ans = input(
+                    "Would You like to Store a Nick Name for this mac address ? Y/N")
+                if ans == 'y':
+                    name = input("Enter Nick Name : ")
+                    redis_db.set(macs[ip], name)
+                    device = str(name.decode("utf-8") +
+                                 " - " + ip + " - " + host_name + " - "+"Vendor: "+vendor)
+                    devices.append(device)
+            else:
+                device = str(nick_name.decode("utf-8") +
+                             " - " + ip + " - " + host_name + " - "+"Vendor: "+vendor+" - mac addr : " + macs[ip])
                 devices.append(device)
         else:
-            device=str(nick_name.decode("utf-8")+" - "+ip+" - "+host_name)
+            # device = ip + " - " + socket.getfqdn(ip) + " - mac addr : " + "unknown" + " - Vendor : " + "unknown"
+            device = ip + "-" + "unknown mac " + host_name
             devices.append(device)
-    else:
-        #device = ip + " - " + socket.getfqdn(ip) + " - mac addr : " + "unknown" + " - Vendor : " + "unknown"
-        device = ip+"-"+"unknown mac "+host_name
-        devices.append(device)
 
-    # time taken for completing whole task
-    duration = round(time.time() - start_time, 2)
 
-    # calculating total time taken for the execution
-    print(f"Total time taken is {duration} seconds")
-    print(devices)
-    return devices, duration
+# scan interface for knowing all devices alive on network
+def scan_interface(default_gateway, local_ip, packets):
+    # obtaining all the network interfaces like eth, wlan
+    interfaces = netifaces.interfaces()
+    for interface in interfaces:
+        if interface in wanted_diff:
+            print("Scanning network: " + str(interface) + "\n")
+            addrs = netifaces.ifaddresses(str(interface))
+            try:
+                print(addrs[netifaces.AF_INET])
+            except KeyError:
+                print("No address assigned for interface : " + interface)
 
-# function to add nick name for mac address
+            addrs = default_gateway.split('.')
+            # print("last device number of subnetwork : {}" + str(int(addrs[3])+1))
+            host_prefix = addrs[0] + "." + addrs[1] + "." + addrs[2] + "."
+            print("host prefix is " + host_prefix)
+            start_addr = 1
+            end_addr = 26
+            threads = []
+
+            print(
+                "\nPlease wait while I am scanning network ... It takes approx 30 sec ...\n")
+
+            for i in range(0, 10):  # making number of threads to 10 to ping asynchronously
+
+                # making sure ip address scanning wont exceed 255
+                if end_addr < 255:
+                    # creating multiple threads to complete the scan quickly
+                    t = threading.Thread(target=check_ip_is_assigned,
+                                         args=(start_addr, end_addr, packets, local_ip, interface, host_prefix))
+                    start_addr = start_addr + 25
+                    end_addr = end_addr + 25
+                    t.start()
+                    threads.append(t)
+
+            # joining all the threads
+            for t in threads:
+                t.join()
+
+
+# returns local ip address
+def get_local_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("8.8.8.8", 80))
+    print("SOCK Details : " + str(s.getsockname()))
+    local_ip = s.getsockname()[0]
+    return local_ip, s
+
+
+# add nick name for mac address
 def add_nick_name_for_device(mac_tobe_updated, name):
     redis_db.set(mac_tobe_updated, name)
-    return "write success"
+    return True
 
-# function to get all keys available in db
+
+# get all keys available in db
 def get_all_names():
     all_values = {}
     keys = redis_db.keys("*")
@@ -241,4 +282,3 @@ def get_all_names():
     for key in keys:
         all_values[key.decode("utf-8")] = redis_db.get(key).decode("utf-8")
     return all_values
-
