@@ -24,13 +24,13 @@ def get_network_interfaces():
 @scanner.route('/devices/<interface>')
 def get_devices(interface):
     devices, duration = ns.get_devices(interface)
-    totDevices = len(devices)
-    networkScan = {
+    tot_devices = len(devices)
+    network_scan = {
         "devices": devices,
         "scan duration": duration,
-        "count": totDevices
+        "count": tot_devices
     }
-    json_devices = json.dumps(networkScan)
+    json_devices = json.dumps(network_scan)
     return json_devices
 
 
@@ -48,7 +48,7 @@ def create_new_name():
     nick_name = request.args.get('name')
     remarks = ns.add_nick_name_for_device(mac_addr, nick_name)
     if remarks:
-        return "<h3>New mac address is writted successfully</h3>"
+        return "<h3>New mac address is written successfully</h3>"
 
 
 @scanner.route('/names')

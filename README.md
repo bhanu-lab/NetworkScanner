@@ -10,7 +10,7 @@ It uses redis to store device nick names for mac addr and retrieves device nick 
   Install Flask using
     `pip3 install flask`
   set `export FLASK_APP=main.py` as environment variable
-  install all packages mentioned in requirements.txt
+  install all packages mentioned in requirements.txt using `pip3 install requirements.txt`
     
   
   

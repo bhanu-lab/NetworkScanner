@@ -8,6 +8,7 @@ import requests
 import sys
 import redis
 import os
+import logging
 
 '''
 Determine your own IP address
@@ -23,6 +24,7 @@ available_ips = []  # declaring available ips list
 macs = {}  # declaring mac addresses map
 host_prefix = ""
 wanted_diff = []
+device_types = {}  # map for ipaddress and device type
 redis_db = redis.Redis(
     host=os.getenv('REDIS_HOST'),
     port=os.getenv('REDIS_PORT'),
@@ -55,6 +57,7 @@ def check_ip_is_assigned(start, end, packets, local_ip, interface, host_prefix):
 
     for host in range(int(start), int(end)):
         ip_addr = host_prefix + str(host)
+        device_types[local_ip] = "this device"
         if ip_addr != local_ip:
             # Ping -c for count of total number of packets to be sent
             #       -w for total number of milliseconds to be waiting
@@ -62,9 +65,25 @@ def check_ip_is_assigned(start, end, packets, local_ip, interface, host_prefix):
                                      '0.2', '-I', interface, ip_addr], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdout, stderr = ping.communicate()
             if ping.returncode == 0:
-                # print(ip_addr + " is available ")
+                logging.info("output of ping command is " + str(stdout))
+                logging.info(ip_addr + " is available ")
+
+                # identify device type and map against ip address
+                device = device_identification_ping_response(stdout)
+                device_types[ip_addr] = device
+
                 available_ips.append(ip_addr)
                 add_mac_addr(ip_addr, local_ip)
+
+# function to identify device based on ping response
+
+
+def device_identification_ping_response(device_response):
+    device_type = "windows"
+    if "ttl=64" in device_response.decode("UTF-8"):
+        device_type = "*nix based device"
+
+    return device_type
 
 
 # function to check an assigned ip in LAN using arping
@@ -115,14 +134,15 @@ def get_oui_from_mac_addr(mac_addr):
     print("Query to macvendor http://macvendors.co/api/"+mac_addr)
     mac_url = 'http://macvendors.co/api/%s'
     r = requests.get(mac_url % mac_addr)
-    # return r.json()['result']['company']
     res = r.json()['result']
-    if 'company' in res:
+    if 'error' in res:
+        return "unknown"
+    elif 'company' in res:
         return res['company']
     else:
         return "unknown"
 
-# function to return all availabel network interfaces
+# function to return all available network interfaces
 
 
 def get_network_interfaces():
@@ -131,7 +151,7 @@ def get_network_interfaces():
     return interfaces
 
 
-# get_devices returns all the devices available on specific interface
+# function returns all the devices available on specific interface
 def get_devices(intf):
     devices = []
     devices.clear()
@@ -179,8 +199,21 @@ def get_devices(intf):
     print(devices)
     return devices, duration
 
+# add_nick_name_to_device adds nick name to device
+
+
+def add_nick_name_to_device(ip, host_name, vendor):
+    ans = input("Would You like to Store a Nick Name for this mac address ? Y/N")
+    if ans == 'y':
+        name = input("Enter Nick Name : ")
+        redis_db.set(macs[ip], name)
+        device = str(name.decode("utf-8") + " - " + ip +
+                     " - " + host_name + " - "+"Vendor: "+vendor)
+        return device
 
 # with all available ips get mac addr and its vendor also try adding nick name to it
+
+
 def get_available_device_names(devices):
     print("LIVE IP\'S AVAILABLE ARE: ")
     redis_db = redis.StrictRedis(host="localhost", port=6379, db=0)
@@ -197,23 +230,17 @@ def get_available_device_names(devices):
             vendor = get_oui_from_mac_addr(macs[ip])
             print(ip + " - " + socket.getfqdn(ip) + " - mac addr : " +
                   macs[ip] + " - Vendor : " + vendor + " Device: " + str(nick_name))
+            ''' use this for adding nick name to device
+            if nick_name is None:
+                device = add_nick_name_to_device(ip, host_name, vendor)
+                devices.append(device)'''
             if nick_name is None:
                 nick_name = b'Test_Device'
-            if nick_name is None:
-                ans = input(
-                    "Would You like to Store a Nick Name for this mac address ? Y/N")
-                if ans == 'y':
-                    name = input("Enter Nick Name : ")
-                    redis_db.set(macs[ip], name)
-                    device = str(name.decode("utf-8") +
-                                 " - " + ip + " - " + host_name + " - "+"Vendor: "+vendor)
-                    devices.append(device)
-            else:
-                device = str(nick_name.decode("utf-8") +
-                             " - " + ip + " - " + host_name + " - "+"Vendor: "+vendor+" - mac addr : " + macs[ip])
-                devices.append(device)
+
+            device = str(nick_name.decode("utf-8") +
+                         " - " + ip + " - " + host_name + " - "+"Vendor: "+vendor+" - mac addr : " + macs[ip] + " - DeviceType: " + device_types[ip])
+            devices.append(device)
         else:
-            # device = ip + " - " + socket.getfqdn(ip) + " - mac addr : " + "unknown" + " - Vendor : " + "unknown"
             device = ip + "-" + "unknown mac " + host_name
             devices.append(device)
 
