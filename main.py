@@ -1,5 +1,6 @@
 from flask import Flask
 import network_scanner as ns
+import mac_changer as mc
 from flask import request
 import json
 '''
@@ -56,3 +57,12 @@ def get_all_devices_stored():
     names = ns.get_all_names()
     json_names = json.dumps(names)
     return json_names
+
+@scanner.route('/changemac/<intf>/<mac_addr>', methods=['GET', 'PUT'])
+def change_mac_addr():
+    logging.info("received command to change mac addr to %s on interface %s", mac_addr, intf)
+    result = mc.change_mac_address(intf, mac_addr)
+    if result:
+        return "<h3>Updated with new mac address</h3>"
+    else:
+        return "<h3>Failed to update mac address</h3>"
