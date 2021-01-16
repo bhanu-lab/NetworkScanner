@@ -5,6 +5,4 @@ redis==3.4.1
 requests==2.22.0
 requests-unixsocket==0.1.5
 simplejson==3.13.2
-ubuntu-drivers-common==0.0.0
 urllib3==1.25.8
-arping==2.2.1

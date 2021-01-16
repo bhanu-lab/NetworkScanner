@@ -1,0 +1,16 @@
+[Unit]
+Description=scans local network for peer devices connected
+After=network.target
+
+[Service]
+WorkingDirectory=<PATH_TO_network_scanner>
+Type=simple
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=netscan
+Environment=FLASK_APP=<PATH_TO_network_scanner>/main.py
+ExecStart=/usr/bin/python3.8 -m flask run
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

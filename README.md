@@ -15,8 +15,10 @@ It uses redis to store device nick names for mac addr and retrieves device nick 
   
   
  <h3>How to run</h3>
- run Redis on port number 6379. If you wanted to run redis docker image use `docker run -p 6379:6379 -d redis`
- run flask  application using `python3 -m flask run`
+ run Redis on port number 6379. If you wanted to run redis docker image use 
+ `docker run -p 6379:6379 -d redis`
+ run flask  application using 
+ `python3 -m flask run`
  
  open your browser and enter below  url for scanning all devices:
  http://127.0.0.1:5000/
