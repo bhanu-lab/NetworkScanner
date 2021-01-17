@@ -228,6 +228,11 @@ def get_available_device_names(devices):
             mac_addr = macs[ip]
             nick_name = redis_db.get(mac_addr)
             vendor = get_oui_from_mac_addr(macs[ip])
+            if host_name == '_gateway':
+                print("setting gateway as device type router")
+                device_types[ip] = "router"
+            else:
+                print("couldnt set router")
             print(ip + " - " + socket.getfqdn(ip) + " - mac addr : " +
                   macs[ip] + " - Vendor : " + vendor + " Device: " + str(nick_name))
             ''' use this for adding nick name to device
