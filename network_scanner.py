@@ -133,15 +133,15 @@ def check_ip_is_live(start, end, local_ip):
 def get_oui_from_mac_addr(mac_addr):
     print("Query to macvendor http://macvendors.co/api/"+mac_addr)
     mac_url = 'http://macvendors.co/api/%s'
-    r = requests.get(mac_url % mac_addr)
-    res = r.json()['result']
-    if 'error' in res:
+    try:
+        r = requests.get(mac_url % mac_addr)
+        res = r.json()['result']
+    except:
         return "unknown"
-    elif 'company' in res:
+    if 'company' in res:
         return res['company']
-    else:
-        return "unknown"
 
+    return "unknown"
 # function to return all available network interfaces
 
 
