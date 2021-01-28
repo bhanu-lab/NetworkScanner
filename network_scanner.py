@@ -132,14 +132,16 @@ def check_ip_is_live(start, end, local_ip):
 # function to get vendor name from mac address
 def get_oui_from_mac_addr(mac_addr):
     print("Query to macvendor http://macvendors.co/api/"+mac_addr)
-    mac_url = 'http://macvendors.co/api/%s'
+    # old oui resolution for mac_url = http://macvendors.co/api/%s
+    api_key = os.environ.get('MAC_API_KEY')
+    mac_url = "https://api.macaddress.io/v1?apiKey="+api_key+"&output=json&search=%s"
     try:
         r = requests.get(mac_url % mac_addr)
-        res = r.json()['result']
+        res = r.json()['vendorDetails']
     except:
         return "unknown"
-    if 'company' in res:
-        return res['company']
+    if 'companyName' in res:
+        return res['companyName']
 
     return "unknown"
 # function to return all available network interfaces
