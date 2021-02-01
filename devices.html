@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Devices</title>
+</head>
+<script type="text/javascript">
+
+    document.addEventListener("DOMContentLoaded", readGetDevices, false);
+
+    // function registered with event listener DOMContentLoaded on every page reload will get invoked
+    function readGetDevices() {
+        //alert("hello")
+        var json_url = 'http://127.0.0.1:5000/devices/wlp2s0';
+        delete_table_rows();
+        /*  alert("in readGetDevices")
+         fetch('http://127.0.0.1:5000/devices/wlp2s0', {
+             method: 'GET'
+         })
+             .then(function (response) { return response.json(); })
+             .then(function (json) {
+                 alert("calling append json")
+                 return append_json(json)
+             }); */
+
+        //Build the XMLHttpRequest (aka AJAX Request)
+        xmlhttp = new XMLHttpRequest();
+        xmlhttp.onreadystatechange = function () {
+            if (this.readyState == 4 && this.status == 200) {//when a good response is given do this
+
+                var data = JSON.parse(this.responseText); // convert the response to a json object
+                append_json(data);// pass the json object to the append_json function
+            }
+        }
+        //set the request destination and type
+        xmlhttp.open("POST", json_url, true);
+        //set required headers for the request
+        xmlhttp.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+        xmlhttp.setRequestHeader("mode", "cors")
+        xmlhttp.setRequestHeader("credentials", "include")
+        xmlhttp.setRequestHeader("Access-Control-Allow-Origin", "Origin")
+        // send the request
+        xmlhttp.send(); // when the request completes it will execute the code in onreadystatechange section
+    }
+
+    //this function appends the json data to the table 'devices'
+    function append_json(data) {
+        //alert(JSON.stringify(data))
+        devices = data.devices
+        //data = JSON.parse(JSON.stringify(data));
+        var table = document.getElementById('devices');
+        devices.forEach(function (devices) {
+            var tr = document.createElement('tr');
+            tr.innerHTML = '<td>' + devices.mac_addr + '</td>' +
+                '<td>' + devices.ip_addr + '</td>' +
+                '<td>' + devices.vendor + '</td>' +
+                '<td>' + devices.host_name + '</td>'
+
+            /* '<td>' + object. + '</td>' +
+            '<td>' + object.DATE + '</td>'; */
+            table.appendChild(tr);
+        });
+    }
+
+    // this function deletes are rows in devices table apart from header
+    function delete_table_rows() {
+        var tableHeaderRowCount = 1;
+        var table = document.getElementById('devices');
+        var rowCount = table.rows.length;
+        for (var i = tableHeaderRowCount; i < rowCount; i++) {
+            table.deleteRow(tableHeaderRowCount);
+        }
+    }
+
+</script>
+
+<body style="background-color: rgb(5, 5, 5); color: brown; text-align: center; vertical-align: bottom;">
+
+    <h1>Devices on Network</h1>
+    <input type="button" onclick="readGetDevices()" value="Load"> </input>
+    <!-- table for displaying devices-->
+    <br />
+    <div id="dev" style="align-items: center;">
+        <table id="devices" style="width:50%; align-self: center;" border="1">
+            <colgroup>
+                <col>
+                <col>
+            </colgroup>
+            <tr>
+                <th id="macaddress_h">MacAddress</th>
+                <th id="ipaddress_h">IPAddress</th>
+                <th id="device_h">DEVICE</th>
+                <th id="nickname_h">NickName</th>
+            </tr>
+        </table>
+    </div>
+
+</body>
+
+</html>
