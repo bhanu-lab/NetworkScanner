@@ -9,6 +9,7 @@ import sys
 import redis
 import os
 import logging
+import json
 
 '''
 Determine your own IP address
@@ -218,8 +219,10 @@ def add_nick_name_to_device(ip, host_name, vendor):
 
 def get_available_device_names(devices):
     print("LIVE IP\'S AVAILABLE ARE: ")
+
     redis_db = redis.StrictRedis(host="localhost", port=6379, db=0)
     for ip in available_ips:
+        device = {}
         # getfqdn will convert ip address into hostname
         host_name = ""
         try:
@@ -244,11 +247,14 @@ def get_available_device_names(devices):
             if nick_name is None:
                 nick_name = b'Test_Device'
 
-            device = str(nick_name.decode("utf-8") +
-                         " - " + ip + " - " + host_name + " - "+"Vendor: "+vendor+" - mac addr : " + macs[ip] + " - DeviceType: " + device_types[ip])
+            device_str = str(nick_name.decode("utf-8") +
+                             " - " + ip + " - " + host_name + " - "+"Vendor: "+vendor+" - mac addr : " + macs[ip] + " - DeviceType: " + device_types[ip])
+            device = {'ip_addr': ip, 'host_name': host_name, 'vendor': vendor,
+                      'mac_addr': macs[ip], 'device_type': device_types[ip]}
             devices.append(device)
         else:
-            device = ip + "-" + "unknown mac " + host_name
+            device = {'ip_addr': ip, 'vendor': "unknown mac",
+                      'host_name': host_name}
             devices.append(device)
 
 
