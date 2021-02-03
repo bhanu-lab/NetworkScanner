@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Network Scanner</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+</head>
+<style>
+    .horizontalcenter {
+        position: absolute;
+        padding-top: 30px;
+        left: 50%;
+        -ms-transform: translate(-50%, -50%);
+        transform: translate(-50%, -50%);
+    }
+
+    th {
+        text-align: center;
+        font-family: verdana;
+        font-size: 20px;
+    }
+
+    body {
+        font-family: "Lucida Console", "Courier New", monospace;
+    }
+
+</style>
+<script type="text/javascript">
+
+    document.addEventListener("DOMContentLoaded", readGetDevices, false);
+
+    // function registered with event listener DOMContentLoaded on every page reload will get invoked
+    function readGetDevices() {
+        var json_url = 'http://127.0.0.1:5000/devices/wlp2s0';
+        $('#progress').modal('show');
+        delete_table_rows('devices');
+        toggleHtmlElementVisibility('reload', 'none');
+
+
+        //Build the XMLHttpRequest (aka AJAX Request)
+        xmlhttp = new XMLHttpRequest();
+        xmlhttp.onreadystatechange = function () {
+            if (this.readyState == 4 && this.status == 200) {//when a good response is given do this
+
+                var data = JSON.parse(this.responseText); // convert the response to a json object
+                append_json(data);// pass the json object to the append_json function
+                toggleHtmlElementVisibility('reload', 'block');
+                $('#progress').modal('hide');
+            }
+        }
+        //set the request destination and type
+        xmlhttp.open("POST", json_url, true);
+        //set required headers for the request
+        xmlhttp.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+        xmlhttp.setRequestHeader("mode", "cors")
+        xmlhttp.setRequestHeader("credentials", "include")
+        xmlhttp.setRequestHeader("Access-Control-Allow-Origin", "Origin")
+        // send the request
+        xmlhttp.send(); // when the request completes it will execute the code in onreadystatechange section
+    }
+
+    //this function appends the json data to the table 'devices'
+    function append_json(data) {
+        devices = data.devices
+        intf = data.intf
+        document.getElementById("devices_cap").innerHTML = "Network devices on interface " + intf
+
+
+        //data = JSON.parse(JSON.stringify(data));
+        var table = document.getElementById('devices');
+        devices.forEach(function (devices) {
+            var tr = document.createElement('tr');
+            tr.innerHTML = '<td>' + devices.index + '</td>' +
+                '<td>' + devices.mac_addr + '</td>' +
+                '<td>' + devices.ip_addr + '</td>' +
+                '<td>' + devices.vendor + '</td>' +
+                '<td>' + devices.host_name + '</td>'
+
+            /* '<td>' + object. + '</td>' +
+            '<td>' + object.DATE + '</td>'; */
+            table.appendChild(tr);
+        });
+    }
+
+    // this function deletes are rows in devices table apart from header
+    function delete_table_rows(table_name) {
+        var tableHeaderRowCount = 1;
+        var table = document.getElementById(table_name);
+        var rowCount = table.rows.length;
+        for (var i = tableHeaderRowCount; i < rowCount; i++) {
+            table.deleteRow(tableHeaderRowCount);
+        }
+    }
+
+    // functions toggles html element visbility
+    function toggleHtmlElementVisibility(html_id, visibility) {
+        document.getElementById(html_id).style.display = visibility
+    }
+
+</script>
+
+<body style="background-color: rgb(5, 5, 5); text-align:center; color: chocolate">
+    <div class="jumbotron text-center" style="background-color: rgb(5, 5, 5) !important;">
+        <h1><em class="material-icons"
+                style="color: chocolate; font-size:48px; vertical-align:center;">router</em>&nbspDevices on Network</h1>
+
+        <!-- Modal -->
+        <div id="progress" class="modal fade" role="dialog">
+            <div class="modal-dialog">
+
+                <!-- Modal content-->
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h4 class="modal-title"><strong>Scanning Network</strong></h4>
+                    </div>
+                    <div class="modal-body">
+                        <p>Please wait it might take few seconds . . .</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!--main table to hold all other html elements-->
+        <table style="width: 100%;">
+            <tr>
+                <td style="width: 25%"></td>
+                <td>
+                    <!--badge info -->
+                    <span class="badge badge-danger" id="devices_cap"></span>
+                    <br />
+                    <br />
+                    <!-- table for displaying devices-->
+                    <table id="devices" class="table table-dark table-bordered" border="1" style="font-size: 20px;">
+                        <thead class="thead-dark">
+                            <tr class="">
+                                <th id="index">S.No</th>
+                                <th id="macaddress_h">MacAddress</th>
+                                <th id="ipaddress_h">IPAddress</th>
+                                <th id="device_h">VENDOR</th>
+                                <th id="nickname_h">NickName</th>
+                            </tr>
+                        </thead>
+                    </table>
+                </td>
+                <td style="width: 25%;"></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td>
+                    <div class="horizontalcenter">
+                        <button id="reload" onclick="readGetDevices()" class="btn btn-danger text-center"
+                            style="vertical-align: top; font-size: 20px;">
+                            <em class="material-icons" style="color: chocolate; font-size:20px;">refresh</em>&nbspReload
+                        </button>
+                    </div>
+                </td>
+                <td></td>
+            </tr>
+        </table>
+    </div>
+</body>
+
+</html>

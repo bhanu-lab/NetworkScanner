@@ -18,11 +18,11 @@ def hello_scanner():
         return "Welcome to network scanning!!! <br> for interfaces /interfaces <br> for devices on a interface /devices/{choose an interface} <br> /names for all names stored on db <br> /nickname/<mac>/<nickname> to enter a nick name for a mac addr"
 
 
-@ scanner.route('/interfaces')
+@ scanner.route('/interfaces', methods=['OPTIONS', 'POST'])
 def get_network_interfaces():
     intf_list = ns.get_network_interfaces()
-    json_str = json.dumps(intf_list)
-    return json_str
+    # json_str = json.dumps(intf_list)
+    return build_actual_response(jsonify(intf_list))
 
 
 @ scanner.route('/devices/<interface>', methods=['OPTIONS', 'POST'])
@@ -35,7 +35,8 @@ def get_devices(interface):
     network_scan = {
         "devices": devices,
         "scan duration": duration,
-        "count": tot_devices
+        "count": tot_devices,
+        "intf": interface
     }
     # json_devices = json.dumps(network_scan)
     return build_actual_response(jsonify(network_scan))
