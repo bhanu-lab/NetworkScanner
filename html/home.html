@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Home Network</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</head>
+<style>
+    body {
+        font-family: "Lucida Console", "Courier New", monospace;
+    }
+
+</style>
+<script type="text/javascript">
+
+    document.addEventListener("DOMContentLoaded", getInterfaces, false);
+
+    function getInterfaces() {
+        alert("sample")
+        var json_url = 'http://127.0.0.1:5000/interfaces';
+        xmlhttp = new XMLHttpRequest();
+        xmlhttp.onreadystatechange = function () {
+            if (this.readyState == 4 && this.status == 200) {
+                console.log("in good resp state")
+                var data = JSON.parse(this.responseText);
+                var ul = document.getElementById('intflist');
+                data.forEach(function (element) {
+                    var li = document.createElement('li');
+                    var link = document.createElement('a');
+                    link.innerHTML = element;
+                    link.href = '/home/bhanureddy/Python/network_scanner/html/devices.html';
+                    li.appendChild(link)
+                    //li.innerHTML = element
+                    li.className = "list-group-item"
+                    ul.appendChild(li)
+                });
+            }
+        }
+        xmlhttp.open("post", json_url, true);
+        xmlhttp.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+        xmlhttp.send();
+    }
+
+</script>
+
+<body style="background-color: black; text-align: center; color: chocolate;">
+    <br />
+
+    <div class="jumbotron text-center" style="background-color: rgb(5, 5, 5) !important;">
+        <h1>Home Network</h1>
+    </div>
+
+    <br />
+
+    <div class="container">
+        <h4>Network Interfaces on Device</h4>
+        <div class="horizontalcenter">
+            <ul id="intflist" class="list-group list-group-flush">
+            </ul>
+        </div>
+    </div>
+
+</body>
+
+</html>
