@@ -15,10 +15,19 @@ It uses redis to store device nick names for mac addr and retrieves device nick 
   
   
  <h3>How to run</h3>
- run Redis on port number 6379. If you wanted to run redis docker image use 
- `docker run -p 6379:6379 -d redis`
+ Redis runs on port number 6379. If you wanted to run redis docker image use below commands
+ <h4>Redis Setup</h4>
+ Create docker volume for persistent storage
+ `sudo docker volume create netscan`
+ Run redis container using volumes
+ `docker container run -d -p 6379:6379 --name redis-netscan --mount source=netscan,destination=/data redis`
+ <h4>Flask App</h4>
  run flask  application using 
  `python3 -m flask run`
+ If you are one any of linux flavour which supports systemd then user netscan.service as unit file to bring python flask application
+
+ <h4>Web Pages</h4>>
+ Run webpages from html directory to view results in better eye pleasing way
  
  open your browser and enter below  url for scanning all devices:
  http://127.0.0.1:5000/
