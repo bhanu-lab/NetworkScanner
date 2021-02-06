@@ -234,7 +234,13 @@ def get_available_device_names(devices):
         if ip in macs:
             mac_addr = macs[ip]
             nick_name = redis_db.get(mac_addr)
-            vendor = get_oui_from_mac_addr(macs[ip])
+
+            # get vendor name if available in local DB else use API to fetch
+            vendor = get_vendor_name_from_mac(macs[ip], redis_db)
+            if vendor == "":
+                vendor = get_oui_from_mac_addr(macs[ip])
+                set_vendor_name_and_macaddr(macs[ip], vendor, redis_db)
+
             if host_name == '_gateway':
                 print("setting gateway as device type router")
                 device_types[ip] = "router"
@@ -251,6 +257,7 @@ def get_available_device_names(devices):
 
             device_str = str(nick_name.decode("utf-8") +
                              " - " + ip + " - " + host_name + " - "+"Vendor: "+vendor+" - mac addr : " + macs[ip] + " - DeviceType: " + device_types[ip])
+            logging.debug("info captured related to devices {%s}", device_str)
             device = {'index': index, 'ip_addr': ip, 'host_name': host_name, 'vendor': vendor,
                       'mac_addr': macs[ip], 'device_type': device_types[ip]}
             devices.append(device)
@@ -324,3 +331,23 @@ def get_all_names():
     for key in keys:
         all_values[key.decode("utf-8")] = redis_db.get(key).decode("utf-8")
     return all_values
+
+
+def get_vendor_name_from_mac(mac_addr, redis_db):
+    # get vendor names using mac addr into redis instead of hitting API everytime to fetch vendor name
+    vendor = redis_db.get(mac_addr)
+    if vendor is None or vendor == "unknown":
+        return ""
+    else:
+        logging.debug("getting data from DB instead of API")
+        return vendor.decode("utf-8")
+
+
+def set_vendor_name_and_macaddr(mac_addr, vendor, redis_db):
+    # store mac address and vendor as key value pair
+    try:
+        logging.debug("storing values to redis db [%s]:[%s]", mac_addr, vendor)
+        redis_db.set(mac_addr, vendor)
+        return True
+    except:
+        return False
