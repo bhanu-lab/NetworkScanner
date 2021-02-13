@@ -30,13 +30,14 @@ def get_devices(interface):
     if request.method == 'OPTIONS':
         return build_preflight_response()
 
-    devices, duration = ns.get_devices(interface)
+    devices, duration, err = ns.get_devices(interface)
     tot_devices = len(devices)
     network_scan = {
         "devices": devices,
         "scan duration": duration,
         "count": tot_devices,
-        "intf": interface
+        "intf": interface,
+        "error": err
     }
     # json_devices = json.dumps(network_scan)
     return build_actual_response(jsonify(network_scan))

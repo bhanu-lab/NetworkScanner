@@ -68,12 +68,18 @@
     function append_json(data) {
         devices = data.devices
         intf = data.intf
-        document.getElementById("devices_cap").innerHTML = "Network devices on interface " + intf
+        error = data.error
+        if (error != "") {
+            document.getElementById("devices_cap").innerHTML = "Err occured on " + intf + data.error.
+        } else {
+            document.getElementById("devices_cap").innerHTML = "Network devices on interface " + intf
+        }
+
 
 
         //data = JSON.parse(JSON.stringify(data));
         var table = document.getElementById('devices');
-        devices.forEach(function (devices) {
+        devices.forEach(function () {
             var tr = document.createElement('tr');
             tr.innerHTML = '<td>' + devices.index + '</td>' +
                 '<td>' + devices.mac_addr + '</td>' +
@@ -82,7 +88,7 @@
                 '<td>' + devices.device_type + '</td>'
 
             /* '<td>' + object. + '</td>' +
-            '<td>' + object.DATE + '</td>'; */
+            '<td>' + object.DATE + '</td>'; */devices
             table.appendChild(tr);
         });
     }
