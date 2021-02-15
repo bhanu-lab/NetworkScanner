@@ -201,7 +201,7 @@ def get_devices(intf):
 
     # showing available IP's
     err = get_available_device_names(devices)
-    log.warn("error received is ", err)
+    # log.info("error received is ", err)
 
     # time taken for completing whole task
     duration = round(time.time() - start_time, 2)
@@ -246,7 +246,8 @@ def get_available_device_names(devices):
                 nick_name = redis_db.get(mac_addr)
             except:
                 log.error("unable to connect to DB")
-                error = {'error': "Unable to connect to REDIS DB"}
+                error = {
+                    'error': "Unable to connect to REDIS DB. Please re-try after running REDIS"}
                 return error
 
                 # get vendor name if available in local DB else use API to fetch

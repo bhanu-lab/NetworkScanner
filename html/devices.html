@@ -39,7 +39,7 @@
         var json_url = 'http://127.0.0.1:5000/devices/wlp2s0';
         $('#progress').modal('show');
         delete_table_rows('devices');
-        toggleHtmlElementVisibility('reload', 'none');
+        toggleHtmlElementVisibility('reload', 'none'); undefined
 
 
         //Build the XMLHttpRequest (aka AJAX Request)
@@ -67,28 +67,30 @@
     //this function appends the json data to the table 'devices'
     function append_json(data) {
         devices = data.devices
+        console.log(devices)
         intf = data.intf
         error = data.error
-        if (error != "") {
-            document.getElementById("devices_cap").innerHTML = "Err occured on " + intf + data.error.
+        if (error != null) {
+            document.getElementById("devices_cap").innerHTML = "Err occured on " + intf + " " + data.error.error;
         } else {
-            document.getElementById("devices_cap").innerHTML = "Network devices on interface " + intf
+            document.getElementById("devices_cap").innerHTML = "Network devices on interface " + intf;
         }
 
 
 
         //data = JSON.parse(JSON.stringify(data));
         var table = document.getElementById('devices');
-        devices.forEach(function () {
+        devices.forEach(function (device, index) {
             var tr = document.createElement('tr');
-            tr.innerHTML = '<td>' + devices.index + '</td>' +
-                '<td>' + devices.mac_addr + '</td>' +
-                '<td>' + devices.ip_addr + '</td>' +
-                '<td>' + devices.vendor + '</td>' +
-                '<td>' + devices.device_type + '</td>'
+            console.log("device type is " + device.device_type)
+            tr.innerHTML = '<td>' + device.index + '</td>' +
+                '<td>' + device.mac_addr + '</td>' +
+                '<td>' + device.ip_addr + '</td>' +
+                '<td>' + device.vendor + '</td>' +
+                '<td>' + device.device_type + '</td>'
 
             /* '<td>' + object. + '</td>' +
-            '<td>' + object.DATE + '</td>'; */devices
+            '<td>' + object.DATE + '</td>'; */
             table.appendChild(tr);
         });
     }
@@ -138,7 +140,7 @@
                 <td style="width: 25%"></td>
                 <td>
                     <!--badge info -->
-                    <span class="badge badge-danger" id="devices_cap"></span>
+                    <span class="badge" id="devices_cap"></span>
                     <br />
                     <br />
                     <!-- table for displaying devices-->
