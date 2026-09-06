@@ -1,16 +1,17 @@
 [Unit]
-Description=scans local network for peer devices connected
-After=network.target
+Description=Home network monitor
+After=network-online.target
+Wants=network-online.target
 
 [Service]
-WorkingDirectory=<PATH_TO_network_scanner>
 Type=simple
-StandardOutput=syslog
-StandardError=syslog
-SyslogIdentifier=netscan
-Environment=FLASK_APP=<PATH_TO_network_scanner>/main.py
-ExecStart=/usr/bin/python3.8 -m flask run
+WorkingDirectory=/opt/NetworkScanner
+EnvironmentFile=-/etc/default/netscan
+ExecStart=/opt/NetworkScanner/.venv/bin/gunicorn --bind 127.0.0.1:5000 --workers 1 --threads 4 --timeout 180 main:scanner
 Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target

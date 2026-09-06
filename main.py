@@ -1,94 +1,60 @@
-from flask import Flask, make_response, request, jsonify
-import network_scanner as ns
-import mac_changer as mc
-from flask import request
-import json
-'''
-install FLASK pip3 install flask
-set FLASKAPP env var using `export FLASK_APP=main.py`
-'''
-scanner = Flask(__name__)
+from __future__ import annotations
+
+import logging
+import os
+from flask import Flask, jsonify, render_template, request
+from network_scanner import NetworkScanner, ScanError, validate_mac, validate_nickname
 
 
-@ scanner.route('/', methods=['OPTIONS', 'POST'])
-def hello_scanner():
-    if request.method == 'OPTIONS':
-        return build_preflight_response()
-    else:
-        return "Welcome to network scanning!!! <br> for interfaces /interfaces <br> for devices on a interface /devices/{choose an interface} <br> /names for all names stored on db <br> /nickname/<mac>/<nickname> to enter a nick name for a mac addr"
+def create_app(scanner_service: NetworkScanner | None = None) -> Flask:
+    app = Flask(__name__, template_folder="html")
+    service = scanner_service or NetworkScanner(
+        max_workers=int(os.getenv("NETSCAN_WORKERS", "64")),
+        timeout=float(os.getenv("NETSCAN_TIMEOUT", ".8")),
+        max_hosts=int(os.getenv("NETSCAN_MAX_HOSTS", "1024")),
+    )
+    app.config["SCANNER_SERVICE"] = service
+
+    @app.get("/")
+    def dashboard(): return render_template("home.html")
+
+    @app.get("/api/health")
+    def health(): return jsonify(status="ok", persistence=bool(service.store.client))
+
+    @app.get("/api/interfaces")
+    def interfaces(): return jsonify([item.__dict__ for item in service.interfaces()])
+
+    @app.post("/api/scans")
+    def scan():
+        interface = str((request.get_json(silent=True) or {}).get("interface", "")).strip()
+        if not interface:
+            raise ScanError("The interface field is required.")
+        devices, duration = service.scan(interface)
+        return jsonify(interface=interface, devices=devices, count=len(devices),
+                       duration_seconds=duration)
+
+    @app.get("/api/nicknames")
+    def nicknames(): return jsonify(service.store.all_nicknames())
+
+    @app.put("/api/devices/<mac_address>/nickname")
+    def nickname(mac_address: str):
+        payload = request.get_json(silent=True) or {}
+        mac = validate_mac(mac_address)
+        name = validate_nickname(str(payload.get("nickname", "")))
+        service.store.set_nickname(mac, name)
+        return jsonify(mac_address=mac, nickname=name)
+
+    @app.errorhandler(ScanError)
+    def scan_error(error): return jsonify(error=str(error)), 400
+
+    @app.errorhandler(404)
+    def not_found(_error): return jsonify(error="Not found"), 404
+    return app
 
 
-@ scanner.route('/interfaces', methods=['OPTIONS', 'POST'])
-def get_network_interfaces():
-    intf_list = ns.get_network_interfaces()
-    # json_str = json.dumps(intf_list)
-    return build_actual_response(jsonify(intf_list))
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper(),
+                    format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+scanner = create_app()
 
-
-@ scanner.route('/devices/<interface>', methods=['OPTIONS', 'POST'])
-def get_devices(interface):
-    if request.method == 'OPTIONS':
-        return build_preflight_response()
-
-    devices, duration, err = ns.get_devices(interface)
-    tot_devices = len(devices)
-    network_scan = {
-        "devices": devices,
-        "scan duration": duration,
-        "count": tot_devices,
-        "intf": interface,
-        "error": err
-    }
-    # json_devices = json.dumps(network_scan)
-    return build_actual_response(jsonify(network_scan))
-
-
-@ scanner.route('/nickname/<mac>/<name>', methods=['GET', 'PUT'])
-def write_nickname(mac, name):
-    print(mac+"  -- " + name+" are sent")
-    remarks = ns.add_nick_name_for_device(mac, name)
-    if remarks:
-        return "<h3>Mac Address is  Updated Successfully</h3>"
-
-
-@ scanner.route('/create', methods=['GET', 'POST'])
-def create_new_name():
-    mac_addr = request.args.get('macaddr')
-    nick_name = request.args.get('name')
-    remarks = ns.add_nick_name_for_device(mac_addr, nick_name)
-    if remarks:
-        return "<h3>New mac address is written successfully</h3>"
-
-
-@ scanner.route('/names')
-def get_all_devices_stored():
-    names = ns.get_all_names()
-    json_names = json.dumps(names)
-    return json_names
-
-
-@ scanner.route('/changemac/<intf>/<mac_addr>', methods=['GET', 'PUT'])
-def change_mac_addr():
-    logging.info(
-        "received command to change mac addr to %s on interface %s", mac_addr, intf)
-    result = mc.change_mac_address(intf, mac_addr)
-    if result:
-        return "<h3>Updated with new mac address</h3>"
-    else:
-        return "<h3>Failed to update mac address</h3>"
-
-# this function is to make sure CORS will be bypassed when browser sends ACCESS request
-# using OPTIONS method
-
-
-def build_preflight_response():
-    response = make_response()
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    response.headers.add('Access-Control-Allow-Headers', "*")
-    response.headers.add('Access-Control-Allow-Methods', "*")
-    return response
-
-
-def build_actual_response(response):
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    return response
+if __name__ == "__main__":
+    scanner.run(host=os.getenv("HOST", "127.0.0.1"), port=int(os.getenv("PORT", "5000")))

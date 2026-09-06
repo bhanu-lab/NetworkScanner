@@ -1,40 +1,65 @@
-<h3>Description</h3>
-Network Scanner scans all interfaces availble and pings on all possible ip addresses to find whether a device is active on that particular ip address. 
-It retrieves mac address from arp table and finds manufacturer of the device using mac address. 
+# Home Network Monitor
 
-It uses redis to store device nick names for mac addr and retrieves device nick name. If device is observed for the first time you are allowed to add nick name for that particular device.
+A self-hosted dashboard that discovers devices reachable on a selected local IPv4 network. It derives the actual CIDR from the interface, probes hosts concurrently, enriches results from the OS neighbour table, and can persist nicknames in Redis.
 
-<h3>Prerequisites</h3>
-  
-  Install Python3 on your computer
-  Install Flask using
-    `pip3 install flask`
-  set `export FLASK_APP=main.py` as environment variable
-  install all packages mentioned in requirements.txt using `pip3 install requirements.txt`
-    
-  
-  
- <h3>How to run</h3>
- Redis runs on port number 6379. If you wanted to run redis docker image use below commands
- <h4>Redis Setup</h4>
- Create docker volume for persistent storage
- `sudo docker volume create netscan`
- Run redis container using volumes
- `docker container run -d -p 6379:6379 --name redis-netscan --mount source=netscan,destination=/data redis`
- <h4>Flask App</h4>
- run flask  application using 
- `python3 -m flask run`
- If you are one any of linux flavour which supports systemd then user netscan.service as unit file to bring python flask application
+## Highlights
 
- <h4>Web Pages</h4>>
- Run webpages from html directory to view results in better eye pleasing way
- 
- open your browser and enter below  url for scanning all devices:
- http://127.0.0.1:5000/
- 
- other options will be shown on home page
+- CIDR-aware, interface-specific scanning
+- Bounded concurrent discovery with a configurable safety limit
+- Gateway detection and local-device identification
+- Responsive dashboard served by Flask
+- Optional Redis persistence; scanning works without Redis
+- Offline-by-default vendor lookup
+- Health API, structured errors, tests, Compose, and systemd examples
 
-<h3>Built With</h3>
-Python3<br>
-Flask<br>
-Redis
+## Requirements and local run
+
+Python 3.11+, Linux `ip`, and `ping` are required. Redis is optional.
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements-dev.txt
+python main.py
+```
+
+Open <http://127.0.0.1:5000>.
+
+## Configuration
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `HOST` | `127.0.0.1` | HTTP bind address |
+| `PORT` | `5000` | HTTP port |
+| `NETSCAN_WORKERS` | `64` | Concurrent ping workers, capped at 256 |
+| `NETSCAN_TIMEOUT` | `0.8` | Per-host timeout in seconds |
+| `NETSCAN_MAX_HOSTS` | `1024` | Refuse unexpectedly large scans |
+| `REDIS_URL` | unset | Enable nickname persistence |
+| `REDIS_HOST` | unset | Alternative Redis host configuration |
+| `VENDOR_LOOKUP` | `false` | Query `api.macvendors.com` for uncached MACs |
+| `LOG_LEVEL` | `INFO` | Application log level |
+
+Vendor lookup is opt-in because it sends device MAC addresses to an external service. Discovery remains local.
+
+## API
+
+- `GET /api/health`
+- `GET /api/interfaces`
+- `POST /api/scans` with `{"interface":"eth0"}`
+- `GET /api/nicknames`
+- `PUT /api/devices/<mac>/nickname` with `{"nickname":"Kitchen TV"}`
+
+## Containers and tests
+
+```bash
+docker compose up --build
+pytest -q
+```
+
+Host networking is required because a bridged container scans its Docker subnet rather than the physical LAN. Run Python directly on macOS, where Docker host networking differs.
+
+Tests mock network operations. Verify a real scan on the target machine because discovery only sees the host's LAN.
+
+## Security
+
+The service exposes LAN device information. Keep the loopback bind or put it behind authenticated access; never expose it directly to the internet. The old MAC-changing endpoint was removed because it was unrelated to monitoring and required dangerous host privileges.
