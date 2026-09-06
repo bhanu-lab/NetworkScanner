@@ -6,11 +6,13 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from fingerprint import Fingerprint, Service
 from network_scanner import (
     Interface,
     MetadataStore,
     NetworkScanner,
     ScanError,
+    is_locally_administered_mac,
     validate_mac,
     validate_nickname,
 )
@@ -26,6 +28,23 @@ def test_validation():
         validate_mac("aa:bb-cc:dd:ee:ff")
     with pytest.raises(ScanError):
         validate_nickname(" ")
+
+
+def test_randomized_mac_detection():
+    assert is_locally_administered_mac("02:00:00:00:00:01")
+    assert not is_locally_administered_mac("00:80:41:12:34:56")
+    assert not is_locally_administered_mac(None)
+
+
+def test_vendor_uses_offline_lookup_and_skips_randomized_addresses():
+    scanner = NetworkScanner(store=MetadataStore())
+    scanner._mac_lookup_loaded = True
+    scanner._mac_lookup = Mock()
+    scanner._mac_lookup.lookup.return_value = "Example Devices, Inc."
+
+    assert scanner._vendor("00:80:41:12:34:56") == "Example Devices, Inc."
+    assert scanner._vendor("02:00:00:00:00:01") is None
+    scanner._mac_lookup.lookup.assert_called_once_with("00:80:41:12:34:56")
 
 
 def test_store_uses_separate_namespaces():
@@ -100,6 +119,43 @@ def test_interface_identifier_selects_the_right_address():
     selected = scanner.interface("Ethernet@192.168.1.5")
 
     assert selected.network == "192.168.1.0/24"
+
+
+def test_detailed_scan_adds_fingerprint_fields():
+    fingerprinter = Mock()
+    fingerprinter.inspect.return_value = {
+        "192.168.1.10": Fingerprint(
+            manufacturer="Example Devices",
+            model="Example TV 4K",
+            friendly_name="Living Room TV",
+            operating_system="Tizen",
+            os_confidence="high",
+            device_type="smart TV",
+            services=[Service(8008, "cast-http")],
+            sources=["mac-vendor", "ssdp", "upnp-description"],
+        )
+    }
+    scanner = NetworkScanner(store=MetadataStore(), fingerprinter=fingerprinter)
+    scanner.interfaces = Mock(return_value=[Interface(
+        "eth0", "192.168.1.5", "255.255.255.0", "192.168.1.0/24", True
+    )])
+    scanner._gateway_for = Mock(return_value="192.168.1.1")
+    scanner._discover = Mock(return_value={"192.168.1.5", "192.168.1.10"})
+    scanner._neighbour_table = Mock(return_value={
+        "192.168.1.10": "00:80:41:12:34:56"
+    })
+    scanner._hostname = Mock(return_value=None)
+    scanner._vendor = Mock(return_value="Adapter Vendor")
+
+    devices, _duration = scanner.scan("eth0", details=True)
+
+    television = next(item for item in devices if item["ip_address"] == "192.168.1.10")
+    assert television["vendor"] == "Example Devices"
+    assert television["model"] == "Example TV 4K"
+    assert television["operating_system"] == "Tizen"
+    assert television["device_type"] == "smart TV"
+    assert television["services"] == [{"port": 8008, "name": "cast-http", "protocol": "tcp"}]
+    fingerprinter.inspect.assert_called_once()
 
 
 @pytest.mark.parametrize(

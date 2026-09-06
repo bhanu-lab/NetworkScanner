@@ -31,4 +31,4 @@ jobs:
       - name: Run tests
         run: python -m pytest -q
       - name: Compile Python sources
-        run: python -m compileall -q main.py network_scanner.py tests
+        run: python -m compileall -q main.py network_scanner.py fingerprint.py netscan_client.py tests

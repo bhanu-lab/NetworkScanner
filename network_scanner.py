@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 import ipaddress
 import logging
 import math
@@ -13,11 +13,14 @@ import re
 import shutil
 import socket
 import subprocess
+import threading
 import time
 from typing import Iterable
 
 import redis
 import requests
+
+from fingerprint import DeviceFingerprinter, FingerprintTarget
 
 LOG = logging.getLogger(__name__)
 IPV4_PATTERN = re.compile(r"(?<!\d)(?:\d{1,3}\.){3}\d{1,3}(?!\d)")
@@ -54,6 +57,13 @@ class Device:
     vendor: str | None = None
     nickname: str | None = None
     device_type: str = "unknown"
+    model: str | None = None
+    friendly_name: str | None = None
+    operating_system: str | None = None
+    os_confidence: str | None = None
+    services: list[dict] = field(default_factory=list)
+    identification_sources: list[str] = field(default_factory=list)
+    mac_is_randomized: bool = False
     is_local: bool = False
     is_gateway: bool = False
 
@@ -127,13 +137,20 @@ class MetadataStore:
 class NetworkScanner:
     def __init__(self, store: MetadataStore | None = None, max_workers: int = 64,
                  timeout: float = .8, max_hosts: int = 1024,
-                 vendor_lookup: bool | None = None):
+                 vendor_lookup: bool | None = None,
+                 fingerprinter: DeviceFingerprinter | None = None):
         self.store = store or MetadataStore.from_environment()
         self.max_workers = max(1, min(max_workers, 256))
         self.timeout = max(.1, timeout)
         self.max_hosts = max(1, max_hosts)
         self.vendor_lookup = (os.getenv("VENDOR_LOOKUP", "false").lower() in
                               {"1", "true", "yes"}) if vendor_lookup is None else vendor_lookup
+        self.fingerprinter = fingerprinter or DeviceFingerprinter(
+            timeout=min(self.timeout, .5), max_workers=self.max_workers,
+        )
+        self._mac_lookup = None
+        self._mac_lookup_loaded = False
+        self._mac_lookup_lock = threading.Lock()
 
     def interfaces(self) -> list[Interface]:
         try:
@@ -199,7 +216,7 @@ class NetworkScanner:
             raise ScanError(f"Interface '{selector}' has no usable IPv4 address.")
         return match
 
-    def scan(self, interface_selector: str) -> tuple[list[dict], float]:
+    def scan(self, interface_selector: str, details: bool = False) -> tuple[list[dict], float]:
         interface = self.interface(interface_selector)
         network = ipaddress.ip_network(interface.network)
         host_count = network.num_addresses if network.prefixlen >= 31 else network.num_addresses - 2
@@ -210,17 +227,44 @@ class NetworkScanner:
         gateway = self._gateway_for(interface.name, interface.address)
         live = self._discover(network.hosts(), interface.name, interface.address)
         neighbours = self._neighbour_table(interface.name, interface.address)
-        devices = []
+        devices: list[Device] = []
         for ip in sorted(live, key=ipaddress.ip_address):
             mac = neighbours.get(ip)
             local, router = ip == interface.address, ip == gateway
+            vendor = self._vendor(mac)
             devices.append(Device(
                 ip_address=ip, mac_address=mac, hostname=self._hostname(ip),
-                vendor=self._vendor(mac), nickname=self.store.get_nickname(mac),
+                vendor=vendor, nickname=self.store.get_nickname(mac),
                 device_type="this device" if local else "router" if router else "network device",
+                identification_sources=["mac-vendor"] if vendor else [],
+                mac_is_randomized=is_locally_administered_mac(mac),
                 is_local=local, is_gateway=router,
-            ).to_dict())
-        return devices, round(time.monotonic() - started, 3)
+            ))
+
+        if details:
+            fingerprints = self.fingerprinter.inspect(
+                [FingerprintTarget(
+                    ip_address=device.ip_address,
+                    hostname=device.hostname,
+                    manufacturer=device.vendor,
+                    is_gateway=device.is_gateway,
+                ) for device in devices],
+                interface.address,
+            )
+            for device in devices:
+                fingerprint = fingerprints.get(device.ip_address)
+                if not fingerprint:
+                    continue
+                device.vendor = fingerprint.manufacturer or device.vendor
+                device.model = fingerprint.model
+                device.friendly_name = fingerprint.friendly_name
+                device.operating_system = fingerprint.operating_system
+                device.os_confidence = fingerprint.os_confidence
+                device.services = [service.to_dict() for service in fingerprint.services]
+                device.identification_sources = fingerprint.sources
+                if not device.is_local and not device.is_gateway and fingerprint.device_type:
+                    device.device_type = fingerprint.device_type
+        return [device.to_dict() for device in devices], round(time.monotonic() - started, 3)
 
     def _discover(self, hosts: Iterable[ipaddress.IPv4Address], interface: str,
                   local_ip: str) -> set[str]:
@@ -370,9 +414,14 @@ class NetworkScanner:
     def _vendor(self, mac: str | None) -> str | None:
         if not mac:
             return None
+        if is_locally_administered_mac(mac):
+            return None
         cached = self.store.get_vendor(mac)
         if cached:
             return cached
+        if offline := self._offline_vendor(mac):
+            self.store.set_vendor(mac, offline)
+            return offline
         if not self.vendor_lookup:
             return None
         try:
@@ -385,12 +434,39 @@ class NetworkScanner:
             LOG.info("Vendor lookup failed for %s", mac)
         return None
 
+    def _offline_vendor(self, mac: str) -> str | None:
+        with self._mac_lookup_lock:
+            if not self._mac_lookup_loaded:
+                self._mac_lookup_loaded = True
+                try:
+                    from mac_vendor_lookup import MacLookup
+
+                    self._mac_lookup = MacLookup()
+                except (ImportError, OSError, RuntimeError):
+                    LOG.warning("Offline MAC vendor database is unavailable")
+            if not self._mac_lookup:
+                return None
+            try:
+                return str(self._mac_lookup.lookup(mac)).strip()[:200] or None
+            except Exception:
+                LOG.debug("No offline vendor match for %s", mac, exc_info=True)
+                return None
+
 
 def validate_mac(value: str) -> str:
     match = MAC_PATTERN.fullmatch(value.strip())
     if not match:
         raise ScanError("Invalid MAC address. Use aa:bb:cc:dd:ee:ff format.")
     return match.group(1).replace("-", ":").lower()
+
+
+def is_locally_administered_mac(value: str | None) -> bool:
+    if not value:
+        return False
+    try:
+        return bool(int(value.split(":", 1)[0], 16) & 0b10)
+    except (ValueError, IndexError):
+        return False
 
 
 def validate_nickname(value: str) -> str:
