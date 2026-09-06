@@ -1,4 +1,5 @@
 Flask==3.1.2
-gunicorn==23.0.0
+gunicorn==23.0.0; platform_system != "Windows"
+psutil==7.2.2
 redis==6.4.0
 requests==2.32.5

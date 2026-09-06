@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 import ipaddress
 import logging
+import math
 import os
 import platform
 import re
@@ -19,7 +20,10 @@ import redis
 import requests
 
 LOG = logging.getLogger(__name__)
-MAC_PATTERN = re.compile(r"(?i)\b([0-9a-f]{2}(?::[0-9a-f]{2}){5})\b")
+IPV4_PATTERN = re.compile(r"(?<!\d)(?:\d{1,3}\.){3}\d{1,3}(?!\d)")
+MAC_PATTERN = re.compile(
+    r"(?i)(?<![0-9a-f])([0-9a-f]{2}([:-])(?:[0-9a-f]{2}\2){4}[0-9a-f]{2})(?![0-9a-f])"
+)
 
 
 class ScanError(RuntimeError):
@@ -33,6 +37,13 @@ class Interface:
     netmask: str
     network: str
     is_default: bool = False
+
+    @property
+    def identifier(self) -> str:
+        return f"{self.name}@{self.address}"
+
+    def to_dict(self) -> dict:
+        return {**asdict(self), "id": self.identifier}
 
 
 @dataclass
@@ -125,58 +136,80 @@ class NetworkScanner:
                               {"1", "true", "yes"}) if vendor_lookup is None else vendor_lookup
 
     def interfaces(self) -> list[Interface]:
-        executable = shutil.which("ip")
-        if not executable:
-            raise ScanError("The 'ip' command is required to inspect network interfaces.")
-        address_result = subprocess.run(
-            [executable, "-j", "-4", "address", "show"], capture_output=True,
-            text=True, check=False,
-        )
-        route_result = subprocess.run(
-            [executable, "-j", "-4", "route", "show", "default"], capture_output=True,
-            text=True, check=False,
-        )
-        if address_result.returncode:
-            raise ScanError("Unable to read network interfaces using 'ip address'.")
-        import json
         try:
-            addresses = json.loads(address_result.stdout)
-            routes = json.loads(route_result.stdout) if not route_result.returncode else []
-        except json.JSONDecodeError as error:
-            raise ScanError("The 'ip' command returned invalid network information.") from error
-        default_name = routes[0].get("dev") if routes else None
+            import psutil
+        except ImportError as error:
+            raise ScanError(
+                "The psutil package is required to inspect network interfaces. "
+                "Install the application requirements and try again."
+            ) from error
+
+        try:
+            addresses = psutil.net_if_addrs()
+            stats = psutil.net_if_stats()
+        except Exception as error:
+            raise ScanError("Unable to read network interfaces from the operating system.") from error
+
+        default_ip = self._default_local_ip()
         result = []
-        for link in addresses:
-            name = link.get("ifname", "")
-            for item in link.get("addr_info", []):
-                address, prefix = item.get("local"), item.get("prefixlen")
-                if item.get("family") != "inet" or not address or address.startswith("127."):
+        seen = set()
+        for name, assigned_addresses in addresses.items():
+            state = stats.get(name)
+            if state is not None and not state.isup:
+                continue
+            for assigned in assigned_addresses:
+                if assigned.family != socket.AF_INET or not assigned.address or not assigned.netmask:
                     continue
                 try:
-                    interface = ipaddress.ip_interface(f"{address}/{prefix}")
+                    configured = ipaddress.ip_interface(f"{assigned.address}/{assigned.netmask}")
                 except ValueError:
                     continue
-                result.append(Interface(name, address, str(interface.netmask),
-                                        str(interface.network), name == default_name))
-        return sorted(result, key=lambda item: (not item.is_default, item.name))
+                if configured.ip.is_loopback or configured.ip.is_unspecified:
+                    continue
+                identity = (name, str(configured.ip), str(configured.network))
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                result.append(Interface(
+                    name=name,
+                    address=str(configured.ip),
+                    netmask=str(configured.netmask),
+                    network=str(configured.network),
+                    is_default=str(configured.ip) == default_ip,
+                ))
+        return sorted(result, key=lambda item: (not item.is_default, item.name, item.address))
 
-    def interface(self, name: str) -> Interface:
-        match = next((item for item in self.interfaces() if item.name == name), None)
+    @staticmethod
+    def _default_local_ip() -> str | None:
+        """Return the IPv4 address selected by the OS default route without sending data."""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+                probe.connect(("192.0.2.1", 9))
+                address = probe.getsockname()[0]
+                return address if address != "0.0.0.0" else None
+        except OSError:
+            return None
+
+    def interface(self, selector: str) -> Interface:
+        available = self.interfaces()
+        match = next((item for item in available if item.identifier == selector), None)
+        if match is None:
+            match = next((item for item in available if item.name == selector), None)
         if not match:
-            raise ScanError(f"Interface '{name}' has no usable IPv4 address.")
+            raise ScanError(f"Interface '{selector}' has no usable IPv4 address.")
         return match
 
-    def scan(self, interface_name: str) -> tuple[list[dict], float]:
-        interface = self.interface(interface_name)
+    def scan(self, interface_selector: str) -> tuple[list[dict], float]:
+        interface = self.interface(interface_selector)
         network = ipaddress.ip_network(interface.network)
-        host_count = max(0, network.num_addresses - 2)
+        host_count = network.num_addresses if network.prefixlen >= 31 else network.num_addresses - 2
         if host_count > self.max_hosts:
             raise ScanError(f"Network {network} contains {host_count} hosts; limit is {self.max_hosts}. "
                             "Set NETSCAN_MAX_HOSTS if this is intentional.")
         started = time.monotonic()
-        gateway = self._gateway_for(interface_name)
-        live = self._discover(network.hosts(), interface_name, interface.address)
-        neighbours = self._neighbour_table(interface_name)
+        gateway = self._gateway_for(interface.name, interface.address)
+        live = self._discover(network.hosts(), interface.name, interface.address)
+        neighbours = self._neighbour_table(interface.name, interface.address)
         devices = []
         for ip in sorted(live, key=ipaddress.ip_address):
             mac = neighbours.get(ip)
@@ -193,7 +226,7 @@ class NetworkScanner:
                   local_ip: str) -> set[str]:
         live = {local_ip}
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
-            futures = {pool.submit(self._ping, str(host), interface): str(host)
+            futures = {pool.submit(self._ping, str(host), interface, local_ip): str(host)
                        for host in hosts if str(host) != local_ip}
             for future in as_completed(futures):
                 try:
@@ -203,18 +236,33 @@ class NetworkScanner:
                     raise ScanError(str(error)) from error
         return live
 
-    def _ping(self, ip: str, interface: str) -> bool:
+    def _ping(self, ip: str, interface: str, source_ip: str) -> bool:
         executable = shutil.which("ping")
         if not executable:
             raise OSError("The 'ping' command is required but was not found.")
-        if platform.system() == "Darwin":
-            command = [executable, "-c", "1", "-W", str(int(self.timeout * 1000)), ip]
+        system = platform.system()
+        timeout_ms = max(1, math.ceil(self.timeout * 1000))
+        if system == "Windows":
+            command = [executable, "-n", "1", "-w", str(timeout_ms),
+                       "-S", source_ip, ip]
+        elif system == "Darwin":
+            command = [executable, "-n", "-c", "1", "-W", str(timeout_ms),
+                       "-S", source_ip, ip]
+        elif system == "Linux":
+            command = [executable, "-n", "-c", "1", "-W",
+                       str(max(1, math.ceil(self.timeout))), "-I", interface, ip]
         else:
-            command = [executable, "-c", "1", "-W", str(max(1, round(self.timeout))),
-                       "-I", interface, ip]
+            raise OSError(f"Unsupported operating system: {system or 'unknown'}")
+        options = {
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+            "check": False,
+            "timeout": self.timeout + 1,
+        }
+        if system == "Windows":
+            options["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         try:
-            return subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                  check=False, timeout=self.timeout + 1).returncode == 0
+            return subprocess.run(command, **options).returncode == 0
         except subprocess.TimeoutExpired:
             return False
 
@@ -226,35 +274,97 @@ class NetworkScanner:
             return None
 
     @staticmethod
-    def _gateway_for(interface: str) -> str | None:
-        executable = shutil.which("ip")
-        if not executable:
+    def _run_command(command: list[str]) -> subprocess.CompletedProcess[str] | None:
+        options = {"capture_output": True, "text": True, "check": False, "timeout": 3}
+        if platform.system() == "Windows":
+            options["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        try:
+            return subprocess.run(command, **options)
+        except (OSError, subprocess.TimeoutExpired):
             return None
-        result = subprocess.run([executable, "-4", "route", "show", "default", "dev", interface],
-                                capture_output=True, text=True, check=False)
-        match = re.search(r"\bvia\s+((?:\d{1,3}\.){3}\d{1,3})", result.stdout)
-        if match:
-            return match.group(1)
-        return None
 
     @staticmethod
-    def _neighbour_table(interface: str) -> dict[str, str]:
-        commands = []
-        if shutil.which("ip"):
-            commands.append(["ip", "neigh", "show", "dev", interface])
-        if shutil.which("arp"):
-            commands.append(["arp", "-an"])
+    def _valid_ipv4(value: str) -> str | None:
+        try:
+            address = ipaddress.ip_address(value)
+            return str(address) if isinstance(address, ipaddress.IPv4Address) else None
+        except ValueError:
+            return None
+
+    @classmethod
+    def _gateway_for(cls, interface: str, source_ip: str) -> str | None:
+        system = platform.system()
+        if system == "Linux" and (executable := shutil.which("ip")):
+            command = [executable, "-4", "route", "show", "default", "dev", interface]
+        elif system == "Darwin" and (executable := shutil.which("route")):
+            command = [executable, "-n", "get", "default"]
+        elif system == "Windows" and (executable := shutil.which("route")):
+            command = [executable, "print", "-4"]
+        else:
+            return None
+
+        result = cls._run_command(command)
+        if not result or result.returncode:
+            return None
+        if system == "Linux":
+            match = re.search(r"\bvia\s+((?:\d{1,3}\.){3}\d{1,3})", result.stdout)
+            return cls._valid_ipv4(match.group(1)) if match else None
+        if system == "Darwin":
+            route_interface = re.search(r"^\s*interface:\s*(\S+)", result.stdout, re.MULTILINE)
+            if route_interface and route_interface.group(1) != interface:
+                return None
+            match = re.search(r"^\s*gateway:\s*((?:\d{1,3}\.){3}\d{1,3})",
+                              result.stdout, re.MULTILINE)
+            return cls._valid_ipv4(match.group(1)) if match else None
+
+        candidates = []
+        route_line = re.compile(
+            r"^\s*0\.0\.0\.0\s+0\.0\.0\.0\s+"
+            r"((?:\d{1,3}\.){3}\d{1,3})\s+"
+            r"((?:\d{1,3}\.){3}\d{1,3})\s+(\d+)\s*$"
+        )
+        for line in result.stdout.splitlines():
+            match = route_line.match(line)
+            if not match or match.group(2) != source_ip:
+                continue
+            gateway = cls._valid_ipv4(match.group(1))
+            if gateway:
+                candidates.append((int(match.group(3)), gateway))
+        return min(candidates)[1] if candidates else None
+
+    @classmethod
+    def _neighbour_table(cls, interface: str, source_ip: str) -> dict[str, str]:
+        system = platform.system()
+        commands: list[list[str]] = []
+        arp = shutil.which("arp")
+        if system == "Linux" and (executable := shutil.which("ip")):
+            commands.append([executable, "neigh", "show", "dev", interface])
+        if system == "Windows" and arp:
+            commands.append([arp, "-a", "-N", source_ip])
+        elif arp:
+            commands.append([arp, "-an"])
+
         for command in commands:
-            result = subprocess.run(command, capture_output=True, text=True, check=False)
-            if result.returncode:
+            result = cls._run_command(command)
+            if not result or result.returncode:
                 continue
             found = {}
             for line in result.stdout.splitlines():
+                if system == "Darwin":
+                    line_interface = re.search(r"\bon\s+(\S+)", line)
+                    if line_interface and line_interface.group(1) != interface:
+                        continue
                 mac = MAC_PATTERN.search(line)
-                ip = re.search(r"\(?((?:\d{1,3}\.){3}\d{1,3})\)?", line)
-                if mac and ip:
-                    found[ip.group(1)] = mac.group(1).lower()
-            return found
+                if not mac:
+                    continue
+                ip = None
+                for candidate in IPV4_PATTERN.findall(line):
+                    if ip := cls._valid_ipv4(candidate):
+                        break
+                if ip:
+                    found[ip] = mac.group(1).replace("-", ":").lower()
+            if found:
+                return found
         return {}
 
     def _vendor(self, mac: str | None) -> str | None:
@@ -277,9 +387,10 @@ class NetworkScanner:
 
 
 def validate_mac(value: str) -> str:
-    if not MAC_PATTERN.fullmatch(value.strip()):
+    match = MAC_PATTERN.fullmatch(value.strip())
+    if not match:
         raise ScanError("Invalid MAC address. Use aa:bb:cc:dd:ee:ff format.")
-    return value.strip().lower()
+    return match.group(1).replace("-", ":").lower()
 
 
 def validate_nickname(value: str) -> str:

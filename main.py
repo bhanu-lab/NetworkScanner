@@ -22,7 +22,7 @@ def create_app(scanner_service: NetworkScanner | None = None) -> Flask:
     def health(): return jsonify(status="ok", persistence=bool(service.store.client))
 
     @app.get("/api/interfaces")
-    def interfaces(): return jsonify([item.__dict__ for item in service.interfaces()])
+    def interfaces(): return jsonify([item.to_dict() for item in service.interfaces()])
 
     @app.post("/api/scans")
     def scan():

@@ -16,6 +16,7 @@ def client(): return create_app(FakeScanner()).test_client()
 def test_health_and_interfaces():
     assert client().get('/api/health').json == {'persistence':False,'status':'ok'}
     assert client().get('/api/interfaces').json[0]['network'] == '192.168.1.0/24'
+    assert client().get('/api/interfaces').json[0]['id'] == 'eth0@192.168.1.2'
 
 
 def test_scan_contract_and_validation():
