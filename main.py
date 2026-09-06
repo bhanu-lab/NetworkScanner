@@ -26,12 +26,20 @@ def create_app(scanner_service: NetworkScanner | None = None) -> Flask:
 
     @app.post("/api/scans")
     def scan():
-        interface = str((request.get_json(silent=True) or {}).get("interface", "")).strip()
+        payload = request.get_json(silent=True)
+        if payload is None:
+            payload = {}
+        if not isinstance(payload, dict):
+            raise ScanError("The request body must be a JSON object.")
+        interface = str(payload.get("interface", "")).strip()
         if not interface:
             raise ScanError("The interface field is required.")
-        devices, duration = service.scan(interface)
+        details = payload.get("details", False)
+        if not isinstance(details, bool):
+            raise ScanError("The details field must be true or false.")
+        devices, duration = service.scan(interface, details=details)
         return jsonify(interface=interface, devices=devices, count=len(devices),
-                       duration_seconds=duration)
+                       duration_seconds=duration, details=details)
 
     @app.get("/api/nicknames")
     def nicknames(): return jsonify(service.store.all_nicknames())

@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "home-network-monitor-client"
+version = "0.1.0"
+description = "Cross-platform CLI client for the Home Network Monitor API"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["requests>=2.32,<3"]
+
+[project.scripts]
+netscan = "netscan_client:main"
+
+[tool.setuptools]
+py-modules = ["netscan_client"]

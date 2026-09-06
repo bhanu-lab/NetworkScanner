@@ -1,2 +1,3 @@
 -r requirements.txt
+-e .
 pytest==8.4.1
